@@ -4,14 +4,14 @@
 
 这是一个可复用的 AgentSkill，用于通过 SSH 在远程 Linux / VPS 服务器上部署 OpenClaw。
 
-它固化了这次真实部署过程中踩过的坑和验证过的流程，包括：
+这个仓库整理了已经在真实部署中验证过的一整套流程，重点覆盖这些高频坑位：
 
 - 在 Ubuntu 服务器上安装 Node.js 22 和 OpenClaw
 - 正确设置 `gateway.mode=local`
-- 以安全方式或临时 IP+Token 方式暴露 Web UI
+- 以安全方式或临时 IP + Token 方式暴露 Web UI
 - 修复 Control UI 的 `origin not allowed` 问题
 - 配置 Telegram Bot 接入与 Telegram SOCKS5 代理
-- 为 systemd 服务配置模型/Provider 请求代理环境变量
+- 为 **systemd 服务本身** 配置模型/Provider 请求代理环境变量
 - 在“服务器远程、浏览器本地”的场景下处理 OpenAI Codex OAuth
 - 将本地已可用的 `auth-profiles.json` 同步到服务器
 - 当 `openai-codex` OAuth 有效但旧的 OpenAI API key 无效时，清理错误认证项
@@ -22,10 +22,14 @@
 ```text
 openclaw-vps-deploy/
 ├── SKILL.md
-└── references/
-    ├── config-example.json
-    ├── runbook.md
-    └── troubleshooting.md
+├── references/
+│   ├── config-example.json
+│   ├── runbook.md
+│   ├── security-cleanup.md
+│   └── troubleshooting.md
+└── scripts/
+    ├── sanitize_auth_profiles.py
+    └── write_systemd_proxy_override.sh
 ```
 
 ## 适用场景
@@ -39,14 +43,50 @@ openclaw-vps-deploy/
 5. 处理“浏览器授权成功，但服务器换 token 失败”的 OpenAI Codex OAuth 问题
 6. 处理认证混乱状态，例如：Codex OAuth 正常，但旧 OpenAI API key 已失效
 
+## 这个 skill 的几个重点
+
+### 1）明确区分两类代理
+
+这个 skill 特别强调：
+
+- `channels.telegram.proxy` → 只影响 Telegram Bot API
+- systemd 服务代理环境变量 → 才影响模型/Provider 请求
+
+这点在实战里非常容易混淆，也是很多“明明配了代理但模型还是超时”的根源。
+
+### 2）远程 Codex OAuth 的稳定兜底方案
+
+当服务器端 `code -> token` 这一步因为地区/风控失败时，这个 skill 推荐一个更稳的办法：
+
+- 在本地可用机器完成认证
+- 把 `auth-profiles.json` 拷到服务器
+- 重启并验证
+
+### 3）加入可复用脚本，减少手工改 JSON
+
+仓库里额外提供了两个脚本：
+
+- `scripts/sanitize_auth_profiles.py`
+  - 删除失效的 `openai:*` API key 认证项，同时保留有效的 `openai-codex` OAuth
+- `scripts/write_systemd_proxy_override.sh`
+  - 为网关服务写入 systemd proxy override，专门解决模型流量不走代理的问题
+
 ## 安装方式
 
 把 `openclaw-vps-deploy/` 目录复制到你的 OpenClaw skills 目录，或者按你平时的打包流程打包后安装。
 
-## 说明
+## 使用说明
 
 - 这个 skill 同时保留了**安全路径**（loopback + SSH / tailnet）和**临时应急路径**（公网 HTTP + token + 危险开关）。
-- 所有危险配置都被明确标注为“临时措施”，问题恢复后应回滚。
+- 所有危险配置都被明确标注为“临时措施”，问题恢复后应尽快回滚。
+- 如果你曾把 gateway token 暴露在聊天、浏览器历史或截图里，调试结束后最好主动轮换。
+
+## skill 内参考文件
+
+- `references/runbook.md` —— 端到端部署流程
+- `references/troubleshooting.md` —— 报错到修复方法的映射
+- `references/security-cleanup.md` —— 应急公网暴露后的安全回收清单
+- `references/config-example.json` —— 可直接改的基础配置样例
 
 ## 许可证
 

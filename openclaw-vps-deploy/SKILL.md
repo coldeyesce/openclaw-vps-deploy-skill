@@ -5,7 +5,15 @@ description: Deploy and harden OpenClaw on a remote Linux/VPS host, especially U
 
 # OpenClaw VPS Deploy
 
-Deploy OpenClaw on a remote Linux host methodically. Prefer SSH-first, reversible changes, and explicit verification after each step.
+Deploy OpenClaw on a remote Linux host methodically. Prefer SSH-first, reversible changes, explicit verification after each step, and rollback of temporary public exposure once recovery is complete.
+
+## Operator rules
+
+- Confirm the host identity before trusting passwords on a changed SSH fingerprint.
+- Ask before enabling public Web UI exposure or leaving dangerous Control UI flags enabled.
+- Treat `channels.telegram.proxy` and provider/model traffic as separate network paths.
+- Trust `openclaw gateway status` and the systemd unit over assumptions when the effective port differs from the config file.
+- Prefer copying a known-good `auth-profiles.json` from a working local machine over repeatedly retrying broken VPS-side Codex OAuth.
 
 ## Core workflow
 
@@ -13,7 +21,7 @@ Deploy OpenClaw on a remote Linux host methodically. Prefer SSH-first, reversibl
 2. Install Node.js 22+ and OpenClaw.
 3. Set `gateway.mode` to `local` before expecting the service to listen.
 4. Decide access model early:
-   - safest: loopback + SSH tunnel
+   - safest: loopback + SSH tunnel / tailnet / HTTPS reverse proxy
    - temporary convenience: public bind + token auth
 5. Configure channels and proxies.
 6. Configure model auth.
@@ -46,6 +54,15 @@ Create `~/.openclaw/openclaw.json` with at least:
 ```
 
 Without `gateway.mode: "local"`, the service may appear started but the gateway will refuse to bind.
+
+## Quick decision tree
+
+- If the user only needs remote access temporarily, prefer loopback + SSH tunnel.
+- If the user refuses local tunneling and explicitly accepts risk, use public IP + token auth and document that it is temporary.
+- If the browser says `origin not allowed`, fix `gateway.controlUi.allowedOrigins` first and verify the real service port.
+- If browser OAuth succeeds but server token exchange fails with region/territory errors, authenticate locally and copy `auth-profiles.json` to the server.
+- If the UI works but model calls time out, configure service-level proxy env vars for the systemd unit.
+- If model calls fail with `Incorrect API key provided`, remove stale `openai` API-key profiles and keep valid `openai-codex` OAuth.
 
 ## Telegram channel setup
 
@@ -195,11 +212,28 @@ A copied auth file may contain both:
 
 Symptoms include `401 Incorrect API key provided: sk-proj-...` even though Codex OAuth is valid.
 
-Fix by removing the stale `openai` profile from `auth-profiles.json` while keeping `openai-codex` intact, then restart the gateway.
+Use the bundled script for deterministic cleanup:
+
+```bash
+python3 scripts/sanitize_auth_profiles.py /root/.openclaw/agents/main/agent/auth-profiles.json
+openclaw gateway restart
+```
+
+The script backs up the file, removes stale `openai:*` entries, and keeps `openai-codex` intact.
 
 ## Model traffic proxy for the gateway service
 
-To proxy provider/model traffic for the systemd service, add a drop-in override:
+`channels.telegram.proxy` does not proxy OpenAI/Codex/model requests. For provider/model traffic, configure the systemd service environment.
+
+Use the bundled helper:
+
+```bash
+bash scripts/write_systemd_proxy_override.sh 'socks5://user:pass@host:port'
+```
+
+This writes `~/.config/systemd/user/openclaw-gateway.service.d/proxy.conf`, reloads systemd, restarts the gateway, and prints the effective unit + override.
+
+If you need to do it manually, the drop-in is:
 
 ```ini
 [Service]
@@ -207,17 +241,6 @@ Environment="ALL_PROXY=socks5://user:pass@host:port"
 Environment="all_proxy=socks5://user:pass@host:port"
 Environment="HTTPS_PROXY=socks5://user:pass@host:port"
 Environment="HTTP_PROXY=socks5://user:pass@host:port"
-```
-
-Write it to:
-
-`~/.config/systemd/user/openclaw-gateway.service.d/proxy.conf`
-
-Then run:
-
-```bash
-systemctl --user daemon-reload
-systemctl --user restart openclaw-gateway.service
 ```
 
 ## Verification checklist
@@ -241,3 +264,4 @@ tail -n 100 /tmp/openclaw/openclaw-$(date +%F).log
 - For an end-to-end runbook, read `references/runbook.md`.
 - For a ready-to-edit config example, read `references/config-example.json`.
 - For error mapping and fixes, read `references/troubleshooting.md`.
+- For cleanup after emergency public access, read `references/security-cleanup.md`.
