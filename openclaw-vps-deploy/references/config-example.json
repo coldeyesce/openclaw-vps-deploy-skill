@@ -1,0 +1,31 @@
+{
+  "gateway": {
+    "mode": "local",
+    "bind": "lan",
+    "auth": {
+      "mode": "token",
+      "token": "<REPLACE_WITH_TOKEN>"
+    },
+    "controlUi": {
+      "allowedOrigins": [
+        "http://<SERVER_IP>:18789"
+      ]
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "openai-codex/gpt-5.4"
+      }
+    }
+  },
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "botToken": "<REPLACE_WITH_TELEGRAM_BOT_TOKEN>",
+      "dmPolicy": "pairing",
+      "proxy": "socks5://<user>:<password>@<host>:<port>",
+      "groupPolicy": "allowlist"
+    }
+  }
+}
