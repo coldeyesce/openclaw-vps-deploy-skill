@@ -17,6 +17,17 @@ This repository packages a real-world deployment workflow that has already been 
 - removing stale/bad OpenAI API keys when valid Codex OAuth already exists
 - troubleshooting timeouts, port mismatches, auth failures, and region-restricted OAuth exchange errors
 
+## Security position
+
+The repository now treats **direct public exposure of OpenClaw itself** as a temporary emergency path, not the default recommendation.
+
+Recommended order of preference:
+
+1. loopback + SSH tunnel
+2. loopback + tailnet/private network
+3. loopback + HTTPS reverse proxy + authentication
+4. direct public exposure only as a temporary break-glass workaround
+
 ## Repository layout
 
 ```text
@@ -24,6 +35,7 @@ openclaw-vps-deploy/
 ├── SKILL.md
 ├── references/
 │   ├── config-example.json
+│   ├── nginx-basic-auth-https.md
 │   ├── runbook.md
 │   ├── security-cleanup.md
 │   └── troubleshooting.md
@@ -42,6 +54,7 @@ Use this skill when you need to:
 4. Route Telegram traffic and model traffic through SOCKS5 proxies
 5. Fix OpenAI Codex OAuth issues that succeed in the browser but fail on server-side token exchange
 6. Recover from mixed auth state, such as valid Codex OAuth plus invalid OpenAI API keys
+7. Put a safer authenticated HTTPS front-end in front of OpenClaw
 
 ## Highlights
 
@@ -54,7 +67,18 @@ The skill explicitly distinguishes between:
 
 That distinction is easy to miss during live debugging and causes many false fixes.
 
-### 2. Remote Codex OAuth workaround
+### 2. Safer public access pattern
+
+Instead of recommending raw public exposure first, the skill now includes a safer pattern:
+
+- OpenClaw binds to loopback only
+- Nginx/Caddy terminates HTTPS
+- Basic Auth protects access
+- the reverse proxy forwards to `127.0.0.1:18789`
+
+See `references/nginx-basic-auth-https.md`.
+
+### 3. Remote Codex OAuth workaround
 
 When server-side Codex OAuth token exchange fails with region or territory restrictions, the skill recommends a reliable fallback:
 
@@ -62,7 +86,7 @@ When server-side Codex OAuth token exchange fails with region or territory restr
 - copy `auth-profiles.json` to the server
 - restart and verify
 
-### 3. Deterministic helper scripts
+### 4. Deterministic helper scripts
 
 Included helper scripts:
 
@@ -77,15 +101,16 @@ Copy the `openclaw-vps-deploy/` folder into your OpenClaw skills directory, or p
 
 ## Operational notes
 
-- The skill intentionally documents both the **safe path** (loopback + SSH/tailnet) and the **temporary break-glass path** (public HTTP + token + dangerous flags).
 - Dangerous settings are described as temporary and should be rolled back after recovery.
 - If you expose the gateway publicly, rotate the token after debugging.
+- If you use self-signed TLS on a raw IP, browsers will warn once; that is expected.
 
 ## Related references inside the skill
 
 - `references/runbook.md` — end-to-end deployment runbook
 - `references/troubleshooting.md` — error-to-fix mapping
 - `references/security-cleanup.md` — post-recovery hardening checklist
+- `references/nginx-basic-auth-https.md` — safer public access via reverse proxy
 - `references/config-example.json` — ready-to-edit baseline config
 
 ## License

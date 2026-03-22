@@ -17,6 +17,21 @@
 - 当 `openai-codex` OAuth 有效但旧的 OpenAI API key 无效时，清理错误认证项
 - 排查超时、端口不一致、鉴权失败、区域限制导致的 OAuth token exchange 失败等问题
 
+## 安全立场
+
+这个仓库现在明确把“**直接把 OpenClaw 本体暴露到公网**”定义为：
+
+- 仅限临时应急
+- 默认不推荐
+- 恢复后应尽快回滚
+
+推荐优先级是：
+
+1. loopback + SSH 隧道
+2. loopback + tailnet / 私网访问
+3. loopback + HTTPS 反代 + 认证
+4. 直接公网暴露仅作为临时 break-glass 方案
+
 ## 仓库结构
 
 ```text
@@ -24,6 +39,7 @@ openclaw-vps-deploy/
 ├── SKILL.md
 ├── references/
 │   ├── config-example.json
+│   ├── nginx-basic-auth-https.md
 │   ├── runbook.md
 │   ├── security-cleanup.md
 │   └── troubleshooting.md
@@ -42,6 +58,7 @@ openclaw-vps-deploy/
 4. 让 Telegram 流量和模型流量分别/统一走 SOCKS5 代理
 5. 处理“浏览器授权成功，但服务器换 token 失败”的 OpenAI Codex OAuth 问题
 6. 处理认证混乱状态，例如：Codex OAuth 正常，但旧 OpenAI API key 已失效
+7. 给 OpenClaw 前面加一个更安全的 HTTPS + 认证访问层
 
 ## 这个 skill 的几个重点
 
@@ -54,7 +71,18 @@ openclaw-vps-deploy/
 
 这点在实战里非常容易混淆，也是很多“明明配了代理但模型还是超时”的根源。
 
-### 2）远程 Codex OAuth 的稳定兜底方案
+### 2）更安全的公网访问方式
+
+它现在不再优先推荐“把 OpenClaw 裸露到公网”，而是优先推荐：
+
+- OpenClaw 只监听本地回环
+- Nginx / Caddy 负责 HTTPS
+- 用 Basic Auth 先拦一层
+- 再把流量反代到 `127.0.0.1:18789`
+
+对应参考文档：`references/nginx-basic-auth-https.md`
+
+### 3）远程 Codex OAuth 的稳定兜底方案
 
 当服务器端 `code -> token` 这一步因为地区/风控失败时，这个 skill 推荐一个更稳的办法：
 
@@ -62,7 +90,7 @@ openclaw-vps-deploy/
 - 把 `auth-profiles.json` 拷到服务器
 - 重启并验证
 
-### 3）加入可复用脚本，减少手工改 JSON
+### 4）加入可复用脚本，减少手工改 JSON
 
 仓库里额外提供了两个脚本：
 
@@ -77,15 +105,16 @@ openclaw-vps-deploy/
 
 ## 使用说明
 
-- 这个 skill 同时保留了**安全路径**（loopback + SSH / tailnet）和**临时应急路径**（公网 HTTP + token + 危险开关）。
 - 所有危险配置都被明确标注为“临时措施”，问题恢复后应尽快回滚。
 - 如果你曾把 gateway token 暴露在聊天、浏览器历史或截图里，调试结束后最好主动轮换。
+- 如果你用的是裸 IP + 自签名 HTTPS，浏览器第一次会报证书警告，这是正常现象。
 
 ## skill 内参考文件
 
 - `references/runbook.md` —— 端到端部署流程
 - `references/troubleshooting.md` —— 报错到修复方法的映射
 - `references/security-cleanup.md` —— 应急公网暴露后的安全回收清单
+- `references/nginx-basic-auth-https.md` —— 更安全的公网访问方案
 - `references/config-example.json` —— 可直接改的基础配置样例
 
 ## 许可证

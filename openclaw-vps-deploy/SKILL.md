@@ -58,7 +58,8 @@ Without `gateway.mode: "local"`, the service may appear started but the gateway 
 ## Quick decision tree
 
 - If the user only needs remote access temporarily, prefer loopback + SSH tunnel.
-- If the user refuses local tunneling and explicitly accepts risk, use public IP + token auth and document that it is temporary.
+- If the user needs public browser access for more than a one-off test, prefer loopback + HTTPS reverse proxy + Basic Auth.
+- If the user refuses local tunneling and explicitly accepts risk, use public IP + token auth only as a temporary emergency path.
 - If the browser says `origin not allowed`, fix `gateway.controlUi.allowedOrigins` first and verify the real service port.
 - If browser OAuth succeeds but server token exchange fails with region/territory errors, authenticate locally and copy `auth-profiles.json` to the server.
 - If the UI works but model calls time out, configure service-level proxy env vars for the systemd unit.
@@ -98,11 +99,29 @@ If the host needs a proxy for Telegram Bot API access, add:
 
 ### Preferred
 
-Keep the gateway on loopback and use SSH forwarding or a trusted HTTPS/tailnet layer.
+Keep the gateway on loopback and put a secure access layer in front of it:
 
-### Temporary public exposure
+1. SSH forwarding
+2. tailnet / private network
+3. HTTPS reverse proxy with authentication
 
-If the user explicitly wants direct browser access by IP:
+### Recommended public pattern
+
+If the user wants browser access from the public internet, prefer:
+
+- OpenClaw on `127.0.0.1` only
+- Nginx/Caddy reverse proxy on `443`
+- HTTPS enabled
+- Basic Auth (or stronger external auth)
+- explicit `gateway.controlUi.allowedOrigins`
+
+This keeps OpenClaw itself off the public network while still allowing browser access.
+
+See `references/nginx-basic-auth-https.md` for a complete example.
+
+### Temporary direct public exposure
+
+Only if the user explicitly accepts the risk and refuses a safer option:
 
 - set `gateway.bind` to `lan`
 - keep token auth enabled
@@ -142,7 +161,7 @@ For direct public HTTP access that still fails due to device/origin controls, th
 }
 ```
 
-Treat both as temporary. Remove them after the user regains access through a safer path.
+Treat both as temporary emergency settings only. Remove them after the user regains access through a safer path.
 
 ## Port mismatch warning
 
@@ -263,5 +282,6 @@ tail -n 100 /tmp/openclaw/openclaw-$(date +%F).log
 
 - For an end-to-end runbook, read `references/runbook.md`.
 - For a ready-to-edit config example, read `references/config-example.json`.
+- For a public but safer front-end, read `references/nginx-basic-auth-https.md`.
 - For error mapping and fixes, read `references/troubleshooting.md`.
 - For cleanup after emergency public access, read `references/security-cleanup.md`.
